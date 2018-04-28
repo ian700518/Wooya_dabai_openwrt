@@ -9,6 +9,8 @@
 #include <errno.h>      /*錯誤號定義*/
 #include <memory.h>
 #include <sys/time.h>
+#include <time.h>
+#include "uart.h"
 
 int uart_initial(char *dev, int baudrate, int bits, int parity, int stopbits)
 {
@@ -170,7 +172,7 @@ void send_message(int fd, int mode)
     }
     nwrite = write(fd, buf, buf_ct);
     memset(buf, 0, buf_ct);
-    usleep(buf_ct*200);
+    usleep(buf_ct*RW_ByteTime);
 }
 
 int uart_read(int fd, char *buf)
@@ -200,7 +202,6 @@ int uart_read(int fd, char *buf)
             {
                 printf("Receive Data Finish\n");
                 memcpy(buf, tmp, readct);
-                send_message(fd, 99);
                 ret = readct;
                 break;
             }
@@ -228,4 +229,15 @@ int uart_read(int fd, char *buf)
         }
     }
     return ret;
+}
+
+int uart_write(int fd, char *buf)
+{
+    int nwrite;
+
+    nwrite = write(fd, buf, strlen(buf));
+    usleep(strlen(buf) * RW_ByteTime);
+    if(nwrite == strlen(buf))
+        return nwrite;
+    return -1;
 }
