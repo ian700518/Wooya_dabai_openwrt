@@ -83,6 +83,8 @@ endef
 
 define Build/Prepare
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)
+	$(INSTALL_DATA) ./src/bluetooth.h $(PKG_BUILD_DIR)/
+	$(INSTALL_DATA) ./src/bluetooth.c $(PKG_BUILD_DIR)/
 	$(INSTALL_DATA) ./src/uart.h $(PKG_BUILD_DIR)/
 	$(INSTALL_DATA) ./src/uart.c $(PKG_BUILD_DIR)/
 	$(INSTALL_DATA) ./src/dabai.c $(PKG_BUILD_DIR)/
@@ -90,7 +92,7 @@ endef
 
 define Build/Compile
 	$(TARGET_CC) $(TARGET_CFLAGS) -Wall \
-		-o $(PKG_BUILD_DIR)/dabai $(PKG_BUILD_DIR)/dabai.c $(PKG_BUILD_DIR)/uart.c
+		-o $(PKG_BUILD_DIR)/dabai $(PKG_BUILD_DIR)/dabai.c $(PKG_BUILD_DIR)/uart.c $(PKG_BUILD_DIR)/bluetooth.c
 endef
 
 define Package/dabai/install

@@ -5,6 +5,20 @@
 #include <errno.h>      /*錯誤號定義*/
 #include <memory.h>
 #include "uart.h"
+#include "bluetooth.h"
+
+/* read string */
+void readstr(char src[], char des[])
+{
+    int i = 0;
+
+    while(src[i] != '\"')
+    {
+        des[i] = src[i];
+        i++;
+    }
+    des[i] = '\0';
+}
 
 /*将字符串s中出现的字符c删除*/
 void squeeze(char s[],int c)
@@ -23,27 +37,98 @@ void squeeze(char s[],int c)
 
 int check_data_format(char *buf, int bytenum, char *buf2)
 {
-    char *tmp, mac_tmp[24], path[36];
+    char *tmp, mac_tmp[24], path[36], ucicommand[64];
     int check_ret, i;
-    int index, type;
-    FILE *fp1;
+    int type = 0;
+    FILE *fp1, *fp2;
 
     // check data profile : first char is "{" and last char is "}"
     if((strchr(buf, '{') == NULL) || (strchr(buf, '}') == NULL))
     {
-        printf("Data profile is error\n");
-        sprintf(buf2, "Data profile is error\n");
-        return -99;
+        //printf("Data profile is error\n");
+        //sprintf(buf2, "Data profile is error\n");
+        return Err_Profile;
     }
+
+    // check data is include index value
     if((tmp = strstr(buf, "index")) != NULL)
     {
-        index = atoi(tmp+8);
-        //printf("index is %d\n", index);
+        CmdIndex = atoi(tmp + strlen("index\":\""));
     }
-    switch(index)
+    else
+    {
+        return Err_Index;
+    }
+
+    switch(CmdIndex)
     {
         // set Host parameter. like ssid / store id ...
         case 1:
+            // check SSID
+            if((tmp = strstr(buf, "SSID")) != NULL)
+            {
+                printf("SSID buf : %s\nstrlen is %d\n", tmp, strlen("SSID\":\""));
+                readstr(tmp + strlen("SSID\":\""), StaSsid);
+                printf("SSID : %s\n", StaSsid);
+            }
+            else
+            {
+                return Err_Ssid;
+            }
+
+            // check Passord
+            if((tmp = strstr(buf, "PASSWORD")) != NULL)
+            {
+                printf("PASSWORD buf : %s\nstrlen is %d\n", tmp, strlen("PASSWORD\":\""));
+                readstr(tmp + strlen("PASSWORD\":\""), StaPassword);
+                printf("PASSWORD : %s\n", StaPassword);
+            }
+            else
+            {
+                return Err_Password;
+            }
+
+            // check encryption
+            if((tmp = strstr(buf, "ENCRYPTION")) != NULL)
+            {
+                printf("ENCRYPTION buf : %s\nstrlen is %d\n", tmp, strlen("ENCRYPTION\":\""));
+                readstr(tmp + strlen("ENCRYPTION\":\""), StaEncryption);
+                printf("ENCRYPTION : %s\n", StaEncryption);
+            }
+            else
+            {
+                return Err_Encrytpion;
+            }
+
+            // check store Id
+            if((tmp = strstr(buf, "StoreId")) != NULL)
+            {
+                printf("StoreId buf : %s\nstrlen is %d\n", tmp, strlen("StoreId\":\""));
+                readstr(tmp + strlen("StoreId\":\""), DBStoreId);
+                printf("StoreId : %s\n", DBStoreId);
+            }
+            else
+            {
+                return Err_Dbstoreid;
+            }
+            // set Host ssid for ap mode
+            sprintf(ucicommand, "uci set wireless.ap.ssid=\"DaBai-%s\"", DBStoreId);
+            send_command();
+            // set Store wifi ssid to Host device
+            sprintf(ucicommand, "uci set wireless.sta.ssid=\"%s\"", StaSsid);
+            send_command(ucicommand, NULL, NULL);
+
+            // set Store wifi ssid to Host device
+            sprintf(ucicommand, "uci set wireless.sta.key=\"%s\"", StaPassword);
+            send_command(ucicommand, NULL, NULL);
+
+            // set Store wifi ssid to Host device
+            sprintf(ucicommand, "uci set wireless.sta.encryption=\"%s\"", StaEncryption);
+            send_command(ucicommand, NULL, NULL);
+
+            // set Host device to apsta mode
+            send_command("wifi_mode apsta", NULL, NULL);
+
             break;
 
         // device like phone / powerband ... send device information to host.
@@ -73,36 +158,32 @@ int check_data_format(char *buf, int bytenum, char *buf2)
                 return -95;
             }
             if(strstr(buf, "android") != NULL)
-                type = 0;
-            else if(strstr(buf, "iOS") != NULL)
                 type = 1;
+            else if(strstr(buf, "iOS") != NULL)
+                type = 2;
             tmp = strstr(buf, "mac");
             //printf("tmp : %s\n", tmp);
-            break;
-    }
-    switch(type)
-    {
-        case 0: // android system
-            memcpy(mac_tmp, tmp+6, 17);
-            //printf("1. mac_tmp : %s\n", mac_tmp);
-            squeeze(mac_tmp, ':');
-            //printf("2. mac_tmp : %s\n", mac_tmp);
-            sprintf(path, "/DaBai/%s.json", mac_tmp);
-            //printf("device json file %s\n", path);
-            //printf("check_data_format buf is : %s\n", buf);
-            fp1 = fopen(path, "w+");
-            if(fp1 != NULL)
+            switch(type)
             {
-                fprintf(fp1, "%s", buf);
-                fclose(fp1);
-            }
-            else
-            {
-                printf("device jason %s open error\n", path);
-            }
-            break;
+                case 1: // android system
+                    memcpy(mac_tmp, tmp+6, 17);
+                    squeeze(mac_tmp, ':');
+                    sprintf(path, "/DaBai/device-%s.json", mac_tmp);
+                    fp1 = fopen(path, "w+");
+                    if(fp1 != NULL)
+                    {
+                        fprintf(fp1, "%s", buf);
+                        fclose(fp1);
+                    }
+                    else
+                    {
+                        printf("device jason %s open error\n", path);
+                    }
+                    break;
 
-        case 1: // iOS system
+                case 2: // iOS system
+                    break;
+            }
             break;
     }
     sprintf(buf2, "Receive Data is OK\n");
@@ -111,19 +192,30 @@ int check_data_format(char *buf, int bytenum, char *buf2)
 
 int main()
 {
-    int fd, recct = 0, writect = 0;
+    int fd, recct = 0;
     char buf[512];
     char buf2[512];
-    char bytec[512];
-    int byte = 0;
     FILE *fp;
+    int i, reg;
 
+    // set AGPIO_CFG
+    send_command("devmem 0x1000003C", buf, sizeof(buf));
+    reg = strtoul(buf + 2, NULL, 16);
+    reg |= 0x000E000F;
+    sprintf(buf, "devmem 0x1000003c 32 0x%08x", reg);
+    send_command(buf, NULL, NULL);
+    send_command("devmem 0x1000003C", buf, sizeof(buf));
+    usleep(1000);
+
+    PinSetForBMModule();
+    usleep(1000);
+    BMModule_initial(normal_mode);
     printf("This is dabai test program!\n");
+
     fd = uart_initial(DEV_UART, 57600, 8, 'N', 1);
     if(fd < 0)
         return -1;
     memset(buf, "", strlen(buf));
-    //printf("buf strlen : %d\n", strlen(buf));
 
     while(1)
     {
@@ -135,20 +227,29 @@ int main()
             if(strcmp(buf2, "Receive Data is OK\n") == 0)
             {
                 //printf("buf2 : %s\n", buf2);
-                fp = fopen("/DaBai/timg.jpg", "r");
-                if(fp != NULL)
+                switch(CmdIndex)
                 {
-                    //printf("read jpg file success\n");
-                    while(1)
-                    {
-                        if(fgets(bytec, 512, fp) != NULL)
+                    case 1:
+                        uart_write(fd, buf2);
+                        break;
+
+                    case 2:
+                        fp = fopen("/DaBai/timg.jpg", "r");
+                        if(fp != NULL)
                         {
-                            uart_write(fd, bytec);
+                            //printf("read jpg file success\n");
+                            memset(buf2, "", strlen(buf2));
+                            while(1)
+                            {
+                                fread(buf2, sizeof(buf2), 1, fp);
+                                uart_write(fd, buf2);
+                                if(feof(fp))
+                                    break;
+                            }
                         }
-                        else
-                            break;
-                    }
+                        break;
                 }
+
             }
             recct = 0;
             //printf("buf : %s\n", buf);

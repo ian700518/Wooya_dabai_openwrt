@@ -236,6 +236,7 @@ int uart_write(int fd, char *buf)
     int nwrite;
 
     nwrite = write(fd, buf, strlen(buf));
+    printf("uart write length : %d\n", strlen(buf));
     usleep(strlen(buf) * RW_ByteTime);
     if(nwrite == strlen(buf))
         return nwrite;
