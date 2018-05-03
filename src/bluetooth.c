@@ -105,7 +105,7 @@ int BMModule_initial(int OPmode)
     }
     reg = SetGpioReg(reg, GPIO_Swbtn_Num, 1);
     sprintf(command, "devmem 0x%08x 32 0x%08x", GPIODATA_0, reg);
-    printf("BMModule_initial command : %s\n", command);
+    //printf("BMModule_initial command : %s\n", command);
     usleep(40000);
     reg = SetGpioReg(reg, GPIO_Reset_Num, 1);
     sprintf(command, "devmem 0x%08x 32 0x%08x", GPIODATA_0, reg);

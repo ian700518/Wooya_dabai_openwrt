@@ -67,9 +67,9 @@ int check_data_format(char *buf, int bytenum, char *buf2)
             // check SSID
             if((tmp = strstr(buf, "SSID")) != NULL)
             {
-                printf("SSID buf : %s\nstrlen is %d\n", tmp, strlen("SSID\":\""));
+                //printf("SSID buf : %s\nstrlen is %d\n", tmp, strlen("SSID\":\""));
                 readstr(tmp + strlen("SSID\":\""), StaSsid);
-                printf("SSID : %s\n", StaSsid);
+                //printf("SSID : %s\n", StaSsid);
             }
             else
             {
@@ -79,9 +79,9 @@ int check_data_format(char *buf, int bytenum, char *buf2)
             // check Passord
             if((tmp = strstr(buf, "PASSWORD")) != NULL)
             {
-                printf("PASSWORD buf : %s\nstrlen is %d\n", tmp, strlen("PASSWORD\":\""));
+                //printf("PASSWORD buf : %s\nstrlen is %d\n", tmp, strlen("PASSWORD\":\""));
                 readstr(tmp + strlen("PASSWORD\":\""), StaPassword);
-                printf("PASSWORD : %s\n", StaPassword);
+                //printf("PASSWORD : %s\n", StaPassword);
             }
             else
             {
@@ -91,9 +91,9 @@ int check_data_format(char *buf, int bytenum, char *buf2)
             // check encryption
             if((tmp = strstr(buf, "ENCRYPTION")) != NULL)
             {
-                printf("ENCRYPTION buf : %s\nstrlen is %d\n", tmp, strlen("ENCRYPTION\":\""));
+                //printf("ENCRYPTION buf : %s\nstrlen is %d\n", tmp, strlen("ENCRYPTION\":\""));
                 readstr(tmp + strlen("ENCRYPTION\":\""), StaEncryption);
-                printf("ENCRYPTION : %s\n", StaEncryption);
+                //printf("ENCRYPTION : %s\n", StaEncryption);
             }
             else
             {
@@ -103,17 +103,18 @@ int check_data_format(char *buf, int bytenum, char *buf2)
             // check store Id
             if((tmp = strstr(buf, "StoreId")) != NULL)
             {
-                printf("StoreId buf : %s\nstrlen is %d\n", tmp, strlen("StoreId\":\""));
+                //printf("StoreId buf : %s\nstrlen is %d\n", tmp, strlen("StoreId\":\""));
                 readstr(tmp + strlen("StoreId\":\""), DBStoreId);
-                printf("StoreId : %s\n", DBStoreId);
+                //printf("StoreId : %s\n", DBStoreId);
             }
             else
             {
                 return Err_Dbstoreid;
             }
             // set Host ssid for ap mode
-            sprintf(ucicommand, "uci set wireless.ap.ssid=\"DaBai-%s\"", DBStoreId);
-            send_command();
+            sprintf(ucicommand, "uci set wireless.ap.ssid=\"DaBai_%s\"", DBStoreId);
+            send_command(ucicommand, NULL, NULL);
+
             // set Store wifi ssid to Host device
             sprintf(ucicommand, "uci set wireless.sta.ssid=\"%s\"", StaSsid);
             send_command(ucicommand, NULL, NULL);
@@ -194,9 +195,10 @@ int main()
 {
     int fd, recct = 0;
     char buf[512];
-    char buf2[512];
+    char buf2[64];
+    char *tmp;
     FILE *fp;
-    int i, reg;
+    int i, reg, data_length;
 
     // set AGPIO_CFG
     send_command("devmem 0x1000003C", buf, sizeof(buf));
@@ -210,13 +212,13 @@ int main()
     PinSetForBMModule();
     usleep(1000);
     BMModule_initial(normal_mode);
-    printf("This is dabai test program!\n");
 
     fd = uart_initial(DEV_UART, 57600, 8, 'N', 1);
     if(fd < 0)
         return -1;
     memset(buf, "", strlen(buf));
 
+    printf("This is dabai test program!\n");
     while(1)
     {
         // read serial port data
@@ -230,22 +232,25 @@ int main()
                 switch(CmdIndex)
                 {
                     case 1:
-                        uart_write(fd, buf2);
+                        uart_write(fd, buf2, strlen(buf2));
                         break;
 
                     case 2:
                         fp = fopen("/DaBai/timg.jpg", "r");
                         if(fp != NULL)
                         {
-                            //printf("read jpg file success\n");
-                            memset(buf2, "", strlen(buf2));
-                            while(1)
+                            fseek(fp, 0, SEEK_END); //定位到文件末
+                            data_length = ftell(fp);
+                            rewind(fp);
+                            char *jpgbuf = (char *)malloc(FiletottyByte);
+                            i = 0;
+                            while(!feof(fp))
                             {
-                                fread(buf2, sizeof(buf2), 1, fp);
-                                uart_write(fd, buf2);
-                                if(feof(fp))
-                                    break;
+                                i = fread(jpgbuf, 1, FiletottyByte, fp);
+                                uart_write(fd, jpgbuf, i);
                             }
+                            free(jpgbuf);
+                            fclose(fp);
                         }
                         break;
                 }

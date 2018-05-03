@@ -231,14 +231,14 @@ int uart_read(int fd, char *buf)
     return ret;
 }
 
-int uart_write(int fd, char *buf)
+int uart_write(int fd, char *buf, int length)
 {
     int nwrite;
 
-    nwrite = write(fd, buf, strlen(buf));
-    printf("uart write length : %d\n", strlen(buf));
-    usleep(strlen(buf) * RW_ByteTime);
-    if(nwrite == strlen(buf))
+    nwrite = write(fd, buf, length);
+    printf("uart write length : %d\n", length);
+    usleep(length * RW_ByteTime);
+    if(nwrite == length)
         return nwrite;
     return -1;
 }
