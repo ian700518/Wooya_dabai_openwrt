@@ -4,6 +4,7 @@
 #include <unistd.h>     /*Unix 標準函數定義*/
 #include <errno.h>      /*錯誤號定義*/
 #include <memory.h>
+#include <time.h>
 #include "uart.h"
 #include "bluetooth.h"
 
@@ -35,12 +36,63 @@ void squeeze(char s[],int c)
     s[j] = '\0';    //这一条语句千万不能忘记，字符串的结束标记
 }
 
+// client device information write into online list
+int write_online_list(struct ClientDev client)
+{
+    FILE *fp;
+    char OldStr[256], NewStr[256];
+    int length;
+
+    fp = fopen("DaBai/Onlist.txt", "a+");
+    if(fp)
+    {
+        sprintf(NewStr, "%s-%s-%s-%s %ld\n", client.DevType, client.DevMac, client.DevUserId, client.DevAccount, time(NULL));
+        length = strlen(client.DevType) + strlen(client.DevMac) + strlen(client.DevUserId) + strlen(client.DevAccount);
+        while(!feof(fp))
+        {
+            // check device at list already, if device has at list return otherwise write into onlist.txt
+            if(fgets(OldStr, sizeof(OldStr), fp) != NULL)
+            {
+                if(strncmp(OldStr, NewStr, length) == 0)
+                {
+                    fclose(fp);
+                    return 1;
+                }
+            }
+        }
+        fprintf(fp, NewStr);
+        fclose(fp);
+        return 0;
+    }
+    else
+    {
+        return -1;
+    }
+}
+/*
+int create_device_json(struct ClientDev client)
+{
+    FILE *fp;
+
+    fp = fopen(SendtoClientFile, "w+");
+    if(fp != NULL)
+    {
+
+    }
+    else
+    {
+        return -1;
+    }
+}
+*/
+
 int check_data_format(char *buf, int bytenum, char *buf2)
 {
     char *tmp, mac_tmp[24], path[36], ucicommand[64];
     int check_ret, i;
     int type = 0;
     FILE *fp1, *fp2;
+    struct ClientDev CDev;
 
     // check data profile : first char is "{" and last char is "}"
     if((strchr(buf, '{') == NULL) || (strchr(buf, '}') == NULL))
@@ -134,57 +186,55 @@ int check_data_format(char *buf, int bytenum, char *buf2)
 
         // device like phone / powerband ... send device information to host.
         case 2:
-            if(strstr(buf, "type") == NULL)
+            // cheeck commnad include device type information
+            if((tmp = strstr(buf, "type")) != NULL)
             {
-                printf("Data not inclue operate system type\n");
-                sprintf(buf2, "Data not inclue operate system type\n");
-                return -98;
+                readstr(tmp + strlen("type\":\""), CDev.DevType);
+                printf("DevType : %s\n", CDev.DevType);
             }
-            else if(strstr(buf, "userId") == NULL)
+            else
             {
-                printf("Data not inclue userId data\n");
-                sprintf(buf2, "Data not inclue userId data\n");
-                return -97;
+                return Err_Type;
             }
-            else if(strstr(buf, "account") == NULL)
-            {
-                printf("Data not inclue account data\n");
-                sprintf(buf2, "Data not inclue account data\n");
-                return -96;
-            }
-            else if(strstr(buf, "mac") == NULL)
-            {
-                printf("Data not inclue mac data\n");
-                sprintf(buf2, "Data not inclue mac data\n");
-                return -95;
-            }
-            if(strstr(buf, "android") != NULL)
-                type = 1;
-            else if(strstr(buf, "iOS") != NULL)
-                type = 2;
-            tmp = strstr(buf, "mac");
-            //printf("tmp : %s\n", tmp);
-            switch(type)
-            {
-                case 1: // android system
-                    memcpy(mac_tmp, tmp+6, 17);
-                    squeeze(mac_tmp, ':');
-                    sprintf(path, "/DaBai/device-%s.json", mac_tmp);
-                    fp1 = fopen(path, "w+");
-                    if(fp1 != NULL)
-                    {
-                        fprintf(fp1, "%s", buf);
-                        fclose(fp1);
-                    }
-                    else
-                    {
-                        printf("device jason %s open error\n", path);
-                    }
-                    break;
 
-                case 2: // iOS system
-                    break;
+            // check command include UserId
+            if((tmp = strstr(buf, "userId")) != NULL)
+            {
+                readstr(tmp + strlen("userId\":\""), CDev.DevUserId);
+                printf("DevUserId : %s\n", CDev.DevUserId);
             }
+            else
+            {
+                return Err_Userid;
+            }
+
+            // check command include account
+            if((tmp = strstr(buf, "account")) != NULL)
+            {
+                readstr(tmp + strlen("account\":\""), CDev.DevAccount);
+                printf("DevAccount : %s\n", CDev.DevAccount);
+            }
+            else
+            {
+                return Err_Account;
+            }
+
+            // check command include device mac address
+            if((tmp = strstr(buf, "mac")) != NULL)
+            {
+                readstr(tmp + strlen("mac\":\""), CDev.DevMac);
+                printf("DevMac : %s\n", CDev.DevMac);
+            }
+            else
+            {
+                return Err_Mac;
+            }
+            write_online_list(CDev);
+            if(strcmp(CDev.DevType, "android") == 0)
+                TypeIdx = 1;
+            else if(strcmp(CDev.DevType, "iOS") == 0)
+                TypeIdx = 2;
+            //create_device_json(CDev);
             break;
     }
     sprintf(buf2, "Receive Data is OK\n");
@@ -199,6 +249,8 @@ int main()
     char *tmp;
     FILE *fp;
     int i, reg, data_length;
+    char *jpgbuf;
+    unsigned char prebuf[6], suffixbuf[2];
 
     // set AGPIO_CFG
     send_command("devmem 0x1000003C", buf, sizeof(buf));
@@ -242,13 +294,38 @@ int main()
                             fseek(fp, 0, SEEK_END); //定位到文件末
                             data_length = ftell(fp);
                             rewind(fp);
-                            char *jpgbuf = (char *)malloc(FiletottyByte);
+                            jpgbuf = (char *)malloc(FiletottyByte);
+
+                            // for iOS system start
+                            if(TypeIdx == 2)
+                            {
+                                prebuf[0] = 0x55;
+                                prebuf[1] = 0xAA;
+                                prebuf[2] = (char)((data_length >> 24) & 0x000000FF);
+                                prebuf[3] = (char)((data_length >> 16) & 0x000000FF);
+                                prebuf[4] = (char)((data_length >> 8) & 0x000000FF);
+                                prebuf[5] = (char)(data_length & 0x000000FF);
+                                for(i=0; i<6; i++)
+                                    printf("prebuf : 0x%x\n", prebuf[i]);
+                                uart_write(fd, prebuf, 4);
+                            }
+                            // for iOS system end
                             i = 0;
                             while(!feof(fp))
                             {
                                 i = fread(jpgbuf, 1, FiletottyByte, fp);
                                 uart_write(fd, jpgbuf, i);
                             }
+                            // for iOS system start
+                            if(TypeIdx == 2)
+                            {
+                                suffixbuf[0] = 0xAA;
+                                suffixbuf[1] = 0x55;
+                                for(i=0; i<2; i++)
+                                    printf("suffixbuf : 0x%x\n", suffixbuf[i]);
+                                uart_write(fd, suffixbuf, 2);
+                            }
+                            // for iOS system end
                             free(jpgbuf);
                             fclose(fp);
                         }
