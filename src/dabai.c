@@ -9,16 +9,36 @@
 #include "bluetooth.h"
 
 /* read string */
-void readstr(char src[], char des[])
+void readjasonvalue(char src[], char des[])
 {
-    int i = 0;
+    int i = 0, j = 0;
 
+    // check first " symbol
     while(src[i] != '\"')
     {
-        des[i] = src[i];
         i++;
     }
-    des[i] = '\0';
+    i++;
+    while(src[j + i] != '\"')
+    {
+        des[j] = src[j + i];
+        j++;
+    }
+    des[j] = '\0';
+}
+
+/*check iOS system MAC address*/
+void checkiOSMac(char src[])
+{
+    int length;
+    int i,j;
+
+    length = strlen(src);
+    for(j=0;j<12;j++)
+    {
+        src[j] = src[length - 12 + j];
+    }
+    src[j] = '\0';
 }
 
 /*将字符串s中出现的字符c删除*/
@@ -86,29 +106,51 @@ int create_device_json(struct ClientDev client)
 }
 */
 
-int check_data_format(char *buf, int bytenum, char *buf2)
+int check_data_format(char *path, int bytenum, char *buf2)
 {
-    char *tmp, mac_tmp[24], path[36], ucicommand[64];
-    int check_ret, i;
-    int type = 0;
-    FILE *fp1, *fp2;
+    char *tmp, *tmp1, ucicommand[64];
+    int  i;
+    int type = 0, file_length;
     struct ClientDev CDev;
+    FILE *fp;
+    char buf[512];
+    char stringnum[3];
 
-    // check data profile : first char is "{" and last char is "}"
-    if((strchr(buf, '{') == NULL) || (strchr(buf, '}') == NULL))
+
+    fp = fopen(path, "r");
+    fseek(fp, 0, SEEK_END); //定位到文件末
+    file_length = ftell(fp);
+    rewind(fp);
+    while(!feof(fp))
     {
-        //printf("Data profile is error\n");
+        fread(buf, 1, file_length, fp);
+    }
+    fclose(fp);
+    printf("buf : %s\n", buf);
+    // check data profile : first char is "{" and last char is "}"
+    if((strchr(buf, '{') == NULL) || (strrchr(buf, '}') == NULL))
+    {
+        //printf("Data profile is serror\n");
         //sprintf(buf2, "Data profile is error\n");
         return Err_Profile;
     }
 
     // check data is include index value
+    //printf("buf : %s\n", buf);
     if((tmp = strstr(buf, "index")) != NULL)
     {
-        CmdIndex = atoi(tmp + strlen("index\":\""));
+        //strncpy(stringnum, tmp + strlen("index\""), 2);
+        //printf("tmp : %s\n", tmp);
+        //printf("tmp : %s\n", tmp + strlen("index\""));
+        readjasonvalue(tmp + strlen("index\""), stringnum);
+        //printf("stringnum = %s\n", stringnum);
+        //CmdIndex = atoi(tmp + strlen("index\":\""));
+        CmdIndex = strtol(stringnum, NULL, 10);
+        printf("CmdIndex : %d\n", CmdIndex);
     }
     else
     {
+        printf("Error : %d\n", Err_Index);
         return Err_Index;
     }
 
@@ -120,48 +162,52 @@ int check_data_format(char *buf, int bytenum, char *buf2)
             if((tmp = strstr(buf, "SSID")) != NULL)
             {
                 //printf("SSID buf : %s\nstrlen is %d\n", tmp, strlen("SSID\":\""));
-                readstr(tmp + strlen("SSID\":\""), StaSsid);
-                //printf("SSID : %s\n", StaSsid);
+                readjasonvalue(tmp + strlen("SSID\""), StaSsid);
+                printf("SSID : %s\n", StaSsid);
             }
             else
             {
                 return Err_Ssid;
+                printf("Error : %d\n", Err_Ssid);
             }
 
             // check Passord
             if((tmp = strstr(buf, "PASSWORD")) != NULL)
             {
                 //printf("PASSWORD buf : %s\nstrlen is %d\n", tmp, strlen("PASSWORD\":\""));
-                readstr(tmp + strlen("PASSWORD\":\""), StaPassword);
-                //printf("PASSWORD : %s\n", StaPassword);
+                readjasonvalue(tmp + strlen("PASSWORD\""), StaPassword);
+                printf("PASSWORD : %s\n", StaPassword);
             }
             else
             {
                 return Err_Password;
+                printf("Error : %d\n", Err_Password);
             }
 
             // check encryption
             if((tmp = strstr(buf, "ENCRYPTION")) != NULL)
             {
                 //printf("ENCRYPTION buf : %s\nstrlen is %d\n", tmp, strlen("ENCRYPTION\":\""));
-                readstr(tmp + strlen("ENCRYPTION\":\""), StaEncryption);
-                //printf("ENCRYPTION : %s\n", StaEncryption);
+                readjasonvalue(tmp + strlen("ENCRYPTION\""), StaEncryption);
+                printf("ENCRYPTION : %s\n", StaEncryption);
             }
             else
             {
                 return Err_Encrytpion;
+                printf("Error : %d\n", Err_Encrytpion);
             }
 
             // check store Id
             if((tmp = strstr(buf, "StoreId")) != NULL)
             {
                 //printf("StoreId buf : %s\nstrlen is %d\n", tmp, strlen("StoreId\":\""));
-                readstr(tmp + strlen("StoreId\":\""), DBStoreId);
-                //printf("StoreId : %s\n", DBStoreId);
+                readjasonvalue(tmp + strlen("StoreId\""), DBStoreId);
+                printf("StoreId : %s\n", DBStoreId);
             }
             else
             {
                 return Err_Dbstoreid;
+                printf("Error : %d\n", Err_Dbstoreid);
             }
             // set Host ssid for ap mode
             sprintf(ucicommand, "uci set wireless.ap.ssid=\"DaBai_%s\"", DBStoreId);
@@ -189,55 +235,68 @@ int check_data_format(char *buf, int bytenum, char *buf2)
             // cheeck commnad include device type information
             if((tmp = strstr(buf, "type")) != NULL)
             {
-                readstr(tmp + strlen("type\":\""), CDev.DevType);
+                readjasonvalue(tmp + strlen("type\""), CDev.DevType);
                 printf("DevType : %s\n", CDev.DevType);
             }
             else
             {
                 return Err_Type;
+                printf("Error : %d\n", Err_Type);
             }
+            if(strcmp(CDev.DevType, "android") == 0)
+                TypeIdx = 1;
+            else if(strcmp(CDev.DevType, "iOS") == 0)
+                TypeIdx = 2;
 
             // check command include UserId
             if((tmp = strstr(buf, "userId")) != NULL)
             {
-                readstr(tmp + strlen("userId\":\""), CDev.DevUserId);
+                readjasonvalue(tmp + strlen("userId\""), CDev.DevUserId);
                 printf("DevUserId : %s\n", CDev.DevUserId);
             }
             else
             {
                 return Err_Userid;
+                printf("Error : %d\n", Err_Userid);
             }
 
             // check command include account
             if((tmp = strstr(buf, "account")) != NULL)
             {
-                readstr(tmp + strlen("account\":\""), CDev.DevAccount);
+                readjasonvalue(tmp + strlen("account\""), CDev.DevAccount);
                 printf("DevAccount : %s\n", CDev.DevAccount);
             }
             else
             {
                 return Err_Account;
+                printf("Error : %d\n", Err_Account);
             }
 
             // check command include device mac address
             if((tmp = strstr(buf, "mac")) != NULL)
             {
-                readstr(tmp + strlen("mac\":\""), CDev.DevMac);
+                readjasonvalue(tmp + strlen("mac\""), CDev.DevMac);
+                if(TypeIdx == 1)    // android
+                {
+                    squeeze(CDev.DevMac, ':');
+                }
+                else if(TypeIdx == 2)
+                {
+                    checkiOSMac(CDev.DevMac);
+                }
                 printf("DevMac : %s\n", CDev.DevMac);
             }
             else
             {
                 return Err_Mac;
+                printf("Error : %d\n", Err_Mac);
             }
             write_online_list(CDev);
-            if(strcmp(CDev.DevType, "android") == 0)
-                TypeIdx = 1;
-            else if(strcmp(CDev.DevType, "iOS") == 0)
-                TypeIdx = 2;
             //create_device_json(CDev);
             break;
     }
     sprintf(buf2, "Receive Data is OK\n");
+    //return Err_none;
     return 0;
 }
 
@@ -250,7 +309,8 @@ int main()
     FILE *fp;
     int i, reg, data_length;
     char *jpgbuf;
-    unsigned char prebuf[6], suffixbuf[2];
+    char prebuf[8] = "StartAA";
+    char suffixbuf[6] = "AAEnd";
 
     // set AGPIO_CFG
     send_command("devmem 0x1000003C", buf, sizeof(buf));
@@ -268,16 +328,16 @@ int main()
     fd = uart_initial(DEV_UART, 57600, 8, 'N', 1);
     if(fd < 0)
         return -1;
-    memset(buf, "", strlen(buf));
+    //memset(buf, "", strlen(buf));
 
     printf("This is dabai test program!\n");
     while(1)
     {
         // read serial port data
-        recct = uart_read(fd, buf);
+        recct = uart_read(fd, "DaBai/command.txt");
         if(recct > 0)
         {
-            check_data_format(buf, recct, buf2);
+            check_data_format("DaBai/command.txt", recct, buf2);
             if(strcmp(buf2, "Receive Data is OK\n") == 0)
             {
                 //printf("buf2 : %s\n", buf2);
@@ -288,7 +348,7 @@ int main()
                         break;
 
                     case 2:
-                        fp = fopen("/DaBai/timg.jpg", "r");
+                        fp = fopen("/DaBai/7688.png", "r");
                         if(fp != NULL)
                         {
                             fseek(fp, 0, SEEK_END); //定位到文件末
@@ -299,15 +359,7 @@ int main()
                             // for iOS system start
                             if(TypeIdx == 2)
                             {
-                                prebuf[0] = 0x55;
-                                prebuf[1] = 0xAA;
-                                prebuf[2] = (char)((data_length >> 24) & 0x000000FF);
-                                prebuf[3] = (char)((data_length >> 16) & 0x000000FF);
-                                prebuf[4] = (char)((data_length >> 8) & 0x000000FF);
-                                prebuf[5] = (char)(data_length & 0x000000FF);
-                                for(i=0; i<6; i++)
-                                    printf("prebuf : 0x%x\n", prebuf[i]);
-                                uart_write(fd, prebuf, 4);
+                                uart_write(fd, prebuf, strlen(prebuf));
                             }
                             // for iOS system end
                             i = 0;
@@ -319,11 +371,7 @@ int main()
                             // for iOS system start
                             if(TypeIdx == 2)
                             {
-                                suffixbuf[0] = 0xAA;
-                                suffixbuf[1] = 0x55;
-                                for(i=0; i<2; i++)
-                                    printf("suffixbuf : 0x%x\n", suffixbuf[i]);
-                                uart_write(fd, suffixbuf, 2);
+                                uart_write(fd, suffixbuf, strlen(suffixbuf));
                             }
                             // for iOS system end
                             free(jpgbuf);
@@ -335,7 +383,7 @@ int main()
             }
             recct = 0;
             //printf("buf : %s\n", buf);
-            memset(buf, "", strlen(buf));
+            //memset(buf, "", strlen(buf));
         }
     }
     return 0;

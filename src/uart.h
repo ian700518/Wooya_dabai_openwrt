@@ -19,7 +19,7 @@ int TypeIdx;
 struct ClientDev
 {
     char DevType[16];
-    char DevMac[32];
+    char DevMac[64];
     char DevAccount[64];
     char DevUserId[64];
 };

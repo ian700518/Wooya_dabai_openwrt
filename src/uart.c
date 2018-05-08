@@ -175,18 +175,19 @@ void send_message(int fd, int mode)
     usleep(buf_ct*RW_ByteTime);
 }
 
-int uart_read(int fd, char *buf)
+int uart_read(int fd, char *path)
 {
     struct timeval timeout;
     char tmp[512];
     fd_set readfd;
-    int select_ret, readct = 0, nread = 0, ret;
+    int select_ret, readct = 0, nread = 0, ret, i = 0;
+    FILE *fp;
 
     memset(tmp, 0, sizeof(tmp));
     while(1)
     {
         timeout.tv_sec = 0;
-        timeout.tv_usec = 5000;
+        timeout.tv_usec = 10000;
         FD_ZERO(&readfd);
         FD_SET(fd,&readfd);
         ret = select(fd+1, &readfd, NULL, NULL, &timeout);
@@ -201,8 +202,13 @@ int uart_read(int fd, char *buf)
             if(readct != 0 && nread == 0)
             {
                 printf("Receive Data Finish\n");
-                memcpy(buf, tmp, readct);
+                fp = fopen(path, "w+");
+                i = fwrite(tmp, 1, strlen(tmp), fp);
+                i = fwrite("\0", 1, 1, fp);
+                fclose(fp);
+                //memcpy(buf, tmp, readct);
                 ret = readct;
+                printf("tmp : %s\n", tmp);
                 break;
             }
             else if(readct >= sizeof(tmp))
